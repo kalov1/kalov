@@ -1,0 +1,63 @@
+---
+- hosts: build-host
+  vars:
+    packages_build: 
+      - git
+      - default-jdk
+      - maven
+    packages_host: 
+      - git
+      - default-jdk
+    app_dir: /root/project
+    repo_url: https://github.com/boxfuse/boxfuse-sample-java-war-hello.git
+  become: yes
+  tasks:
+  - name: install packages-build-host
+    apt:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+      "{{ packages_build }}"
+  - name: clone pom.xml
+    git:
+      repo: "{{ repo_url }}"
+      dest: "{{ app_dir }}"
+      clone: yes
+  - name: build war app
+    shell: mvn package -f "{{ app_dir }}"
+- hosts: prod-host
+  vars:
+    packages_host: 
+      - git
+      - default-jdk
+    app_dir: /root/project
+    ip_build_host: 10.0.0.5
+    port_ssh_build_host: 18100
+  become: yes
+  tasks:
+  - name: install packages-prod-host
+    apt:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+    with_items:
+      "{{ packages_host }}"
+  - name: copy tomcat-install.sh
+    script: ./tomcat-install.sh
+  - name: copy war file
+    synchronize:
+      src: "{{ app_dir }}/target/hello-1.0.war"
+      dest: /opt/tomcat/webapps/hello-1.0.war
+      dest_port: "{{ port_ssh_build_host }}"
+      delegate_to: "{{ ip_build_host }}" 
+  - name: copy unit file
+    copy:
+      src: ./tomcat.service.j2
+      dest: /etc/systemd/system/tomcat.service
+  - name: start and enable tomcat
+    service:
+      name: tomcat
+      daemon_reload: yes
+      state: started
+      enabled: yes
